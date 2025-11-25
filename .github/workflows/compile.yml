@@ -242,6 +242,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          gh auth status
           gh release create "v0.${{ env.PG_VERSION }}.${{ github.run_number }}" \
             --title "v0.${{ env.PG_VERSION }}.${{ github.run_number }}" \
             --notes "pgvector v${{ needs.check_version.outputs.version }} for PostgreSQL ${{ env.PG_VERSION }}" \
