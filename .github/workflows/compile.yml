@@ -25,7 +25,13 @@ jobs:
           echo "version=$latest_version" >> $GITHUB_OUTPUT
 
           # Get the current version from the latest release of this repo
-          current_version=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/latest" | jq -r '.body' | grep -oP 'pgvector v\K[0-9.]+')
+          release_response=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/latest")
+          if echo "$release_response" | jq -e '.message == "Not Found"' > /dev/null 2>&1; then
+            echo "No existing release found"
+            current_version=""
+          else
+            current_version=$(echo "$release_response" | jq -r '.body // ""' | grep -oE 'pgvector v[0-9.]+' | sed 's/pgvector v//' || echo "")
+          fi
           echo "Current version: $current_version"
 
           if [[ "$latest_version" != "$current_version" ]]; then
