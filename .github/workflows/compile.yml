@@ -9,6 +9,9 @@ on:
 env:
   PGVECTOR_REPO: "pgvector/pgvector"
 
+permissions:
+  contents: write
+
 jobs:
   check_version:
     runs-on: ubuntu-latest
