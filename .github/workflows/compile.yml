@@ -151,23 +151,33 @@ jobs:
       - name: Create artifact (macOS)
         if: runner.os == 'macOS'
         run: |
+          # Use pg_config to get correct paths (works across different PG versions)
+          export PG_CONFIG="$(brew --prefix postgresql@${{ env.PG_VERSION }})/bin/pg_config"
+          PKGLIBDIR=$($PG_CONFIG --pkglibdir)
+          SHAREDIR=$($PG_CONFIG --sharedir)
+          INCLUDEDIR_SERVER=$($PG_CONFIG --includedir-server)
+
+          echo "PKGLIBDIR: $PKGLIBDIR"
+          echo "SHAREDIR: $SHAREDIR"
+          echo "INCLUDEDIR_SERVER: $INCLUDEDIR_SERVER"
+
           # Create directory structure
           mkdir -p pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/lib
           mkdir -p pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/share/extension
           mkdir -p pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/include/server/extension/vector
 
           # Copy shared library
-          cp $(brew --prefix postgresql@${{ env.PG_VERSION }})/lib/postgresql/vector.dylib pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/lib/
+          cp $PKGLIBDIR/vector.dylib pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/lib/
 
           # Copy extension files
-          cp $(brew --prefix postgresql@${{ env.PG_VERSION }})/share/postgresql@${{ env.PG_VERSION }}/extension/vector*.sql pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/share/extension/
-          cp $(brew --prefix postgresql@${{ env.PG_VERSION }})/share/postgresql@${{ env.PG_VERSION }}/extension/vector.control pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/share/extension/
+          cp $SHAREDIR/extension/vector*.sql pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/share/extension/
+          cp $SHAREDIR/extension/vector.control pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/share/extension/
 
           # Copy header files
-          cp $(brew --prefix postgresql@${{ env.PG_VERSION }})/include/postgresql/server/extension/vector/*.h pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/include/server/extension/vector/
+          cp $INCLUDEDIR_SERVER/extension/vector/*.h pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/include/server/extension/vector/
 
           # Create a .so symlink for compatibility
-          cp $(brew --prefix postgresql@${{ env.PG_VERSION }})/lib/postgresql/vector.dylib pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/lib/vector.so
+          cp $PKGLIBDIR/vector.dylib pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/lib/vector.so
 
           # Create zip archive
           zip -r pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}.zip pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}
