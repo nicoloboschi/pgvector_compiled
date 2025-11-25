@@ -189,15 +189,31 @@ jobs:
           7z a -tgzip pgvector-${{ matrix.triple }}-pg16.tar.gz pgvector-${{ matrix.triple }}-pg16.tar
           del pgvector-${{ matrix.triple }}-pg16.tar
 
-      - name: Release
-        uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          files: |
+          name: pgvector-${{ matrix.triple }}-pg16
+          path: |
             pgvector-${{ matrix.triple }}-pg16.zip
             pgvector-${{ matrix.triple }}-pg16.tar.gz
-          name: v0.16.${{ github.run_number }}
-          tag_name: v0.16.${{ github.run_number }}
-          body: |
-            pgvector v${{ needs.check_version.outputs.version }} for PostgreSQL 16
+
+  release:
+    needs: [check_version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v0.16.${{ github.run_number }}" \
+            --title "v0.16.${{ github.run_number }}" \
+            --notes "pgvector v${{ needs.check_version.outputs.version }} for PostgreSQL 16" \
+            artifacts/**/*
