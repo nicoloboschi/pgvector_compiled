@@ -63,15 +63,14 @@ jobs:
       PG_VERSION: ${{ needs.check_version.outputs.pg_version }}
     strategy:
       matrix:
-        #os: [ubuntu-latest, macos-latest, windows-latest]
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         include:
           - os: ubuntu-latest
             triple: x86_64-unknown-linux-gnu
           - os: macos-latest
             triple: aarch64-apple-darwin
-#          - os: windows-latest
-#            triple: x86_64-pc-windows-msvc
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
 
     steps:
       - name: Set up PostgreSQL and pgvector (Linux)
