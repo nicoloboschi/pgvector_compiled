@@ -240,9 +240,11 @@ jobs:
 
       - name: Create Release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           gh auth status
+          # Debug: check token permissions
+          curl -s -H "Authorization: token $GH_TOKEN" https://api.github.com/repos/${{ github.repository }} | jq '.permissions'
           gh release create "v0.${{ env.PG_VERSION }}.${{ github.run_number }}" \
             --title "v0.${{ env.PG_VERSION }}.${{ github.run_number }}" \
             --notes "pgvector v${{ needs.check_version.outputs.version }} for PostgreSQL ${{ env.PG_VERSION }}" \
