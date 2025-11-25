@@ -225,6 +225,8 @@ jobs:
   release:
     needs: [check_version, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       PG_VERSION: ${{ needs.check_version.outputs.pg_version }}
     steps:
