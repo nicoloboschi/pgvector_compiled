@@ -1,12 +1,7 @@
 name: Compile pgvector
 
 on:
-  schedule:
-    - cron: "0 0 * * *" # Run daily at midnight UTC
   push:
-    paths:
-      - ".github/workflows/compile.yml"
-  pull_request:
     paths:
       - ".github/workflows/compile.yml"
   workflow_dispatch:
