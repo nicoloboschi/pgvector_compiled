@@ -70,8 +70,8 @@ jobs:
             triple: aarch64-unknown-linux-gnu
           - os: macos-latest
             triple: aarch64-apple-darwin
-#          - os: windows-latest
-#            triple: x86_64-pc-windows-msvc
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
 
     steps:
       - name: Set up PostgreSQL and pgvector (Linux)
