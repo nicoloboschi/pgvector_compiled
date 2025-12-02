@@ -242,7 +242,7 @@ jobs:
     steps:
       - name: Build pgvector in Alpine container
         run: |
-          docker run --rm -v $PWD:/output --platform ${{ matrix.platform }} alpine:3.20 sh -c '
+          docker run --rm -v $PWD:/output --platform ${{ matrix.platform }} alpine:edge sh -c '
             set -e
             apk add --no-cache postgresql${{ env.PG_VERSION }}-dev git make gcc musl-dev clang llvm
 
