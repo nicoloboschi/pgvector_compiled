@@ -222,8 +222,86 @@ jobs:
             pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}.zip
             pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}.tar.gz
 
+  build-musl:
+    needs: check_version
+    if: needs.check_version.outputs.new_version == 'true' || github.event_name != 'schedule'
+    runs-on: ${{ matrix.os }}
+    env:
+      PG_VERSION: ${{ needs.check_version.outputs.pg_version }}
+      PGVECTOR_VERSION: ${{ needs.check_version.outputs.version }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            triple: x86_64-unknown-linux-musl
+            platform: linux/amd64
+          - os: ubuntu-24.04-arm64
+            triple: aarch64-unknown-linux-musl
+            platform: linux/arm64
+
+    steps:
+      - name: Build pgvector in Alpine container
+        run: |
+          docker run --rm -v $PWD:/output --platform ${{ matrix.platform }} alpine:3.20 sh -c '
+            set -e
+            apk add --no-cache postgresql${{ env.PG_VERSION }}-dev git make gcc musl-dev clang llvm
+
+            # Clone pgvector
+            git clone --branch v${{ env.PGVECTOR_VERSION }} --depth 1 https://github.com/pgvector/pgvector.git
+            cd pgvector
+
+            # Compile
+            make
+            make install
+
+            # Get paths from pg_config
+            PKGLIBDIR=$(pg_config --pkglibdir)
+            SHAREDIR=$(pg_config --sharedir)
+            INCLUDEDIR_SERVER=$(pg_config --includedir-server)
+
+            echo "PKGLIBDIR: $PKGLIBDIR"
+            echo "SHAREDIR: $SHAREDIR"
+            echo "INCLUDEDIR_SERVER: $INCLUDEDIR_SERVER"
+
+            # Create artifact directory
+            cd /output
+            mkdir -p pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/lib
+            mkdir -p pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/share/extension
+            mkdir -p pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/include/server/extension/vector
+
+            # Copy shared library
+            cp $PKGLIBDIR/vector.so pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/lib/
+
+            # Copy bitcode if available
+            if [ -d "$PKGLIBDIR/bitcode/vector" ]; then
+              mkdir -p pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/lib/bitcode/vector/src
+              cp $PKGLIBDIR/bitcode/vector.index.bc pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/lib/bitcode/ || true
+              cp $PKGLIBDIR/bitcode/vector/src/*.bc pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/lib/bitcode/vector/src/ || true
+            fi
+
+            # Copy extension files
+            cp $SHAREDIR/extension/vector*.sql pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/share/extension/
+            cp $SHAREDIR/extension/vector.control pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/share/extension/
+
+            # Copy header files
+            cp $INCLUDEDIR_SERVER/extension/vector/*.h pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/include/server/extension/vector/
+          '
+
+      - name: Create archives
+        run: |
+          zip -r pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}.zip pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}
+          tar -czvf pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}.tar.gz pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}
+          path: |
+            pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}.zip
+            pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}.tar.gz
+
   release:
-    needs: [check_version, build]
+    needs: [check_version, build, build-musl]
     runs-on: ubuntu-latest
     permissions:
       contents: write
