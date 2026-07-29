@@ -76,15 +76,51 @@ jobs:
             triple: x86_64-pc-windows-msvc
 
     steps:
-      - name: Set up PostgreSQL and pgvector (Linux)
+      - name: Build pgvector against the GLIBC 2.35 baseline (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo DEBIAN_FRONTEND=noninteractive apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql-common
-          sudo DEBIAN_FRONTEND=noninteractive /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-          sudo DEBIAN_FRONTEND=noninteractive apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql-${{ env.PG_VERSION }} postgresql-server-dev-${{ env.PG_VERSION }}
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql-${{ env.PG_VERSION }}-pgvector
+          # Do not copy the host distribution's pgvector package: its ABI can
+          # require a newer GLIBC than the pg0 GNU binary supports. Building
+          # from source in Jammy keeps the extension at the GLIBC 2.35 floor.
+          docker run --rm -v "$PWD:/output" -e PG_VERSION -e PGVECTOR_VERSION -e PGVECTOR_REPO -e TRIPLE ubuntu:22.04 sh -ec '
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y ca-certificates curl gnupg git make gcc clang llvm
+            curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc |
+              gpg --dearmor --batch --yes -o /usr/share/keyrings/postgresql.gpg
+            echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt jammy-pgdg main" \
+              > /etc/apt/sources.list.d/pgdg.list
+            apt-get update
+            apt-get install -y postgresql-${PG_VERSION} postgresql-server-dev-${PG_VERSION}
+
+            git clone --branch v${PGVECTOR_VERSION} --depth 1 https://github.com/${PGVECTOR_REPO}.git /tmp/pgvector
+            cd /tmp/pgvector
+            export PG_CONFIG=/usr/lib/postgresql/${PG_VERSION}/bin/pg_config
+            make OPTFLAGS=""
+            make install
+
+            PKGLIBDIR=$($PG_CONFIG --pkglibdir)
+            SHAREDIR=$($PG_CONFIG --sharedir)
+            INCLUDEDIR_SERVER=$($PG_CONFIG --includedir-server)
+            ARTIFACT=/output/pgvector-${TRIPLE}-pg${PG_VERSION}
+            mkdir -p "$ARTIFACT/lib/bitcode/vector/src" "$ARTIFACT/share/extension" "$ARTIFACT/include/server/extension/vector"
+            cp "$PKGLIBDIR/vector.so" "$ARTIFACT/lib/"
+            cp "$SHAREDIR/extension/vector"*.sql "$SHAREDIR/extension/vector.control" "$ARTIFACT/share/extension/"
+            cp "$INCLUDEDIR_SERVER/extension/vector"/*.h "$ARTIFACT/include/server/extension/vector/"
+            if [ -d "$PKGLIBDIR/bitcode/vector" ]; then
+              cp "$PKGLIBDIR/bitcode/vector.index.bc" "$ARTIFACT/lib/bitcode/" || true
+              cp "$PKGLIBDIR/bitcode/vector/src/"*.bc "$ARTIFACT/lib/bitcode/vector/src/" || true
+            fi
+
+            max_glibc=$(objdump -T "$PKGLIBDIR/vector.so" | sed -n "s/.*GLIBC_\\([0-9.]*\\).*/\\1/p" | sort -V | tail -1)
+            if [ -n "$max_glibc" ] && [ "$(printf "%s\\n" "$max_glibc" 2.35 | sort -V | tail -1)" != "2.35" ]; then
+              echo "vector.so requires GLIBC_${max_glibc}; expected GLIBC_2.35 or older" >&2
+              exit 1
+            fi
+          '
+        env:
+          PGVECTOR_VERSION: ${{ needs.check_version.outputs.version }}
+          TRIPLE: ${{ matrix.triple }}
 
       - name: Set up PostgreSQL (macOS)
         if: runner.os == 'macOS'
@@ -126,28 +162,7 @@ jobs:
       - name: Create artifact (Linux)
         if: runner.os == 'Linux'
         run: |
-          mkdir -p pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/include/server/extension/vector
-          mkdir -p pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/lib/bitcode/vector/src
-          mkdir -p pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/share/extension
-
-          # Copy header files
-          sudo cp /usr/include/postgresql/${{ env.PG_VERSION }}/server/extension/vector/*.h pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/include/server/extension/vector/
-
-          # Copy bitcode files
-          sudo cp /usr/lib/postgresql/${{ env.PG_VERSION }}/lib/bitcode/vector.index.bc pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/lib/bitcode/
-          sudo cp /usr/lib/postgresql/${{ env.PG_VERSION }}/lib/bitcode/vector/src/*.bc pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/lib/bitcode/vector/src/
-
-          # Copy shared object file
-          sudo cp /usr/lib/postgresql/${{ env.PG_VERSION }}/lib/vector.so pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/lib/
-
-          # Copy extension files
-          sudo cp /usr/share/postgresql/${{ env.PG_VERSION }}/extension/vector*.sql pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/share/extension/
-          sudo cp /usr/share/postgresql/${{ env.PG_VERSION }}/extension/vector.control pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}/share/extension/
-
-          # Create zip archive
           zip -r pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}.zip pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}
-
-          # Create tar.gz archive
           tar -czvf pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}.tar.gz pgvector-${{ matrix.triple }}-pg${{ env.PG_VERSION }}
 
       - name: Create artifact (macOS)
