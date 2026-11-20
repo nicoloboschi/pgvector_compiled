@@ -268,8 +268,9 @@ jobs:
             git clone --branch v${{ env.PGVECTOR_VERSION }} --depth 1 https://github.com/pgvector/pgvector.git
             cd pgvector
 
-            # Compile
-            make
+            # Compile (OPTFLAGS="" for a portable build, as in the glibc job; the default -march=native
+            # ties the binary to the runner CPU)
+            make OPTFLAGS=""
             make install
 
             # Get paths from pg_config
